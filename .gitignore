@@ -1,0 +1,55 @@
+# ------------------------
+# Python / FastAPI
+# ------------------------
+
+# Virtual environment
+venv/
+
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*.so
+
+# NLTK data (if stored locally)
+nltk_data/
+
+# Environment files
+.env
+
+# ------------------------
+# macOS System Files
+# ------------------------
+.DS_Store
+
+# ------------------------
+# Xcode / Swift / iOS
+# ------------------------
+
+# User-specific settings
+*.xcuserstate
+*.xcuserdatad
+*.xcworkspace
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/
+
+# Build artifacts
+DerivedData/
+build/
+
+# Swift package artifacts
+.swiftpm/
+Package.resolved
+
+# Optional: Ignore APIManager.swift if you make local changes like IP address
+# Comment this out if you want to include it in source control
+# **/APIManager.swift
+
+# Logs
+*.log
+
+# ------------------------
+# VSCode / Editor Settings (optional)
+# ------------------------
+.vscode/
+.idea/
+*.sw?

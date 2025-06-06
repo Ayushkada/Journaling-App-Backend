@@ -49,7 +49,7 @@ cd backend/
 
 ## 👥 Author
 
-**Ayush Kadakia**  
+**Ayush Kadakia**
 [LinkedIn](https://linkedin.com/in/ayush-kadakia1/) • [GitHub](https://github.com/AyushKada)
 
 ---

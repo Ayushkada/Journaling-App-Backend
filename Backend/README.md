@@ -52,7 +52,11 @@ This is the backend for a journaling application built with FastAPI. It exposes 
    ```
 
 4. **Set up environment variables**  
-   - Copy `.env.example` to `.env` and configure
+  You’ll need to create a `.env` file with the following keys. See `.env.example` for format.
+
+- Get your OpenAI API key at [https://platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys)
+- For Apple login, register a service at [Apple Developer Portal](https://developer.apple.com/account/resources/identifiers/)
+- Generate a secure `SECRET_KEY` using `openssl rand -hex 32` or similar.
 
 5. **Ensure PostgreSQL is running**, and the DB in `.env` is created.
 

@@ -1,3 +1,4 @@
+
 # 🧠 Journaling App – Full Stack
 
 This repository contains the **backend** code for a journaling application that provides users with AI-powered insights into their emotions, self-talk, and goal progress.
@@ -24,32 +25,33 @@ Start with:
 
 ```bash
 cd backend/
+```
 
 ---
 
 ## 📦 Tech Summary
 
-- **Backend**: FastAPI, PostgreSQL, Hugging Face Transformers, Docker
-- **Auth**: JWT
-- **AI Models**: RoBERTa, T5, spaCy, custom pipelines, OpenAI
-- **DevOps**: Docker, Docker Compose, CI/CD-ready
+- **Backend**: FastAPI, PostgreSQL, Hugging Face Transformers, Docker  
+- **Auth**: JWT  
+- **AI Models**: RoBERTa, T5, spaCy, custom pipelines, OpenAI  
+- **DevOps**: Docker, Docker Compose, CI/CD-ready  
 
 ---
 
 ## ✨ Key Features
 
-- Secure authentication and Apple login
-- Encrypted journal entry management
-- Goal tracking with AI-powered feedback
-- NLP-based sentiment, emotion, and goal analysis
-- Full REST API with Swagger docs
-- Deployable via Docker or cloud providers
+- Secure authentication and Apple login  
+- Encrypted journal entry management  
+- Goal tracking with AI-powered feedback  
+- NLP-based sentiment, emotion, and goal analysis  
+- Full REST API with Swagger docs  
+- Deployable via Docker or cloud providers  
 
 ---
 
 ## 👥 Author
 
-**Ayush Kadakia**
+**Ayush Kadakia**  
 [LinkedIn](https://linkedin.com/in/ayush-kadakia1/) • [GitHub](https://github.com/AyushKada)
 
 ---

@@ -4,7 +4,7 @@
 This is the backend for a journaling application built with FastAPI. It exposes secure, RESTful API endpoints for user authentication, journal management, goal tracking, and AI-powered analysis. The system helps users reflect on their mental and emotional health while tracking personal progress through data insights.
 
 ## 🔑 Features  
-- **JWT Authentication**: Secure user login, signup, and Apple Sign-In support, backed by PostgreSQL.  
+- **JWT Authentication**: Secure user login, signup, Apple Sign-In, and Google OAuth support, backed by PostgreSQL.  
 - **Goal Management**: Create, update, and track personal goals with automatic analysis and progress tracking.  
 - **Journaling System**: Add, edit, and delete journal entries, stored securely with encrypted insights.  
 - **AI-Driven Analysis**: NLP models from Hugging Face power sentiment detection, goal extraction, and self-talk feedback.  
@@ -18,12 +18,14 @@ This is the backend for a journaling application built with FastAPI. It exposes 
 - **Testing**: Pytest  
 - **Deployment**: Docker, Uvicorn  
 - **Security**: JWT Auth, Environment Variables
+- **OAuth**: Google OAuth 2.0, Apple Sign-In
 
 ## 📦 Key Libraries & Tools  
 - `FastAPI`, `SQLAlchemy`, `psycopg2`, `PyJWT`  
 - `transformers`, `torch`, `spacy`, `nltk`, `pydantic`, `python-dotenv`  
 - `Uvicorn`, `pytest`, `httpx`, `requests`, `loguru`  
 - `Docker`, `docker-compose`  
+- `google-auth`, `requests` (for Google OAuth)
 - Optional: `cloudflared` (for temporary public tunnel)
 
 ## ⚙️ Setup Instructions
@@ -52,15 +54,21 @@ This is the backend for a journaling application built with FastAPI. It exposes 
    ```
 
 4. **Set up environment variables**  
-  You’ll need to create a `.env` file with the following keys. See `.env.example` for format.
+  You'll need to create a `.env` file with the following keys. See `.env.example` for format.
 
 - Get your OpenAI API key at [https://platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys)
 - For Apple login, register a service at [Apple Developer Portal](https://developer.apple.com/account/resources/identifiers/)
+- For Google OAuth, set up credentials at [Google Cloud Console](https://console.cloud.google.com/) (see `GOOGLE_OAUTH_SETUP.md` for detailed instructions)
 - Generate a secure `SECRET_KEY` using `openssl rand -hex 32` or similar.
 
-5. **Ensure PostgreSQL is running**, and the DB in `.env` is created.
+5. **Run database migration** (if adding Google OAuth to existing database)
+   ```bash
+   python migrate_add_google_id.py
+   ```
 
-6. **Run the app locally**  
+6. **Ensure PostgreSQL is running**, and the DB in `.env` is created.
+
+7. **Run the app locally**  
    ```bash
    uvicorn app.main:app --reload
    ```
@@ -90,6 +98,8 @@ A `.trycloudflare.com` URL will be generated — share this for testing or demos
   - **POST /auth/login**: Login with username and password.
   - **POST /auth/signup**: Register a new user.
   - **POST /auth/apple-login**: Login using Apple credentials.
+  - **POST /auth/google-login**: Login using Google OAuth.
+  - **GET /auth/google/url**: Get Google OAuth URL for frontend redirect.
   - **GET /auth/me**: Retrieve the current user's profile.
 
 - **Analysis Routes**
@@ -128,6 +138,31 @@ A `.trycloudflare.com` URL will be generated — share this for testing or demos
   - **GET /system/debug/journals**: Retrieve all journals for debugging.
   - **GET /system/debug/goals**: Retrieve all goals for debugging.
 
+## 🔐 OAuth Setup
+
+### Google OAuth
+For detailed Google OAuth setup instructions, see [`GOOGLE_OAUTH_SETUP.md`](GOOGLE_OAUTH_SETUP.md).
+
+Quick setup:
+1. Create a Google Cloud Project
+2. Enable OAuth 2.0 API
+3. Create OAuth 2.0 credentials
+4. Add environment variables:
+   ```env
+   GOOGLE_CLIENT_ID=your_client_id
+   GOOGLE_CLIENT_SECRET=your_client_secret
+   GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
+   ```
+
+### Apple Sign-In
+1. Register your app in Apple Developer Portal
+2. Add environment variables:
+   ```env
+   APPLE_AUDIENCE=your_bundle_id
+   APPLE_ISSUER=https://appleid.apple.com
+   APPLE_KEYS_URL=https://appleid.apple.com/auth/keys
+   ```
+
 ## ☁️ Cloud Deployment Notes  
 Can be deployed to:
 - **Render**, **Heroku**, or **Fly.io** for quick container hosting  
@@ -138,3 +173,4 @@ Be sure to:
 - Use HTTPS in production
 - Set up PostgreSQL access
 - Use a reverse proxy like Nginx if needed
+- Update OAuth redirect URIs for production domains

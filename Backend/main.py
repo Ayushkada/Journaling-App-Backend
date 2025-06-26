@@ -7,7 +7,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import Base, engine
 
-app = FastAPI()
+app = FastAPI(
+    title="Journal API",
+    version="1.0.0",
+    description="Backend for JRL — journaling, feedback, and AI-driven analysis."
+)
 
 # CORS config
 app.add_middleware(
@@ -26,4 +30,6 @@ app.include_router(analysis_router.router)
 app.include_router(system_router.router)
 
 # DB Tables
-Base.metadata.create_all(bind=engine)
+@app.on_event("startup")
+def create_tables():
+    Base.metadata.create_all(bind=engine)

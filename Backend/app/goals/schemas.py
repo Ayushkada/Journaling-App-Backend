@@ -1,18 +1,19 @@
 from datetime import datetime
-from pydantic import BaseModel
 from typing import Optional, List
 from uuid import UUID
+from pydantic import BaseModel, Field
 
 class BaseSchema(BaseModel):
     class Config:
         from_attributes = True
-
+        orm_mode = True
 
 class GoalBase(BaseSchema):
     id: UUID
     user_id: UUID
+    parent_goal_id: Optional[UUID] = None
     content: str
-    aiGenerated: bool
+    ai_generated: bool
     category: Optional[str] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
@@ -23,11 +24,11 @@ class GoalBase(BaseSchema):
     progress_score: float
     related_entry_ids: Optional[List[str]] = None  
     time_limit: Optional[datetime] = None
-    verified: Optional[bool] = False
+    verified: bool = False
 
 class GoalCreate(BaseSchema):
     content: str
-    aiGenerated: bool
+    ai_generated: bool
     category: Optional[str] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
@@ -39,13 +40,11 @@ class GoalCreate(BaseSchema):
     related_entry_ids: Optional[List[str]] = None
     time_limit: Optional[datetime] = None
     verified: Optional[bool] = False
-
-class GoalResponse(GoalBase):
-    pass
+    parent_goal_id: Optional[UUID] = None
 
 class GoalUpdate(BaseSchema):
     content: Optional[str] = None
-    aiGenerated: Optional[bool] = None
+    ai_generated: Optional[bool] = None
     category: Optional[str] = None
     completed_at: Optional[datetime] = None
     emotion_trend: Optional[List[float]] = None
@@ -56,3 +55,7 @@ class GoalUpdate(BaseSchema):
     related_entry_ids: Optional[List[str]] = None
     time_limit: Optional[datetime] = None
     verified: Optional[bool] = None
+    parent_goal_id: Optional[UUID] = None
+
+class GoalResponse(GoalBase):
+    pass

@@ -1,3 +1,4 @@
+from app.journals.schemas import JournalEntryBase
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
@@ -8,7 +9,6 @@ from app.journals.models import JournalEntry
 from app.goals.models import Goal as Goal
 from app.auth.service import create_token
 from app.auth.schemas import UserOut
-from app.journals.schemas import JournalEntryResponse
 from app.goals.schemas import GoalResponse
 from app.system.schemas import DevLoginResponse
 from pydantic import BaseModel
@@ -44,10 +44,10 @@ def get_users_route(db: Session = Depends(get_db)):
     return users
 
 
-@router.get("/debug/journals", response_model=List[JournalEntryResponse])
+@router.get("/debug/journals", response_model=List[JournalEntryBase])
 def get_all_journals_route(db: Session = Depends(get_db)):
     journals = db.query(JournalEntry).order_by(JournalEntry.date.desc()).all()
-    return [JournalEntryResponse.model_validate(journal) for journal in journals]
+    return [JournalEntryBase.model_validate(journal) for journal in journals]
 
 
 @router.get("/debug/goals", response_model=List[GoalResponse])

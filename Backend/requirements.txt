@@ -16,3 +16,5 @@ passlib[bcrypt]
 PyJWT
 emoji
 openai
+google-auth
+requests

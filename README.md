@@ -1,18 +1,16 @@
-
 # 🧠 Journaling App – Full Stack
 
-This repository contains the **backend** code for a journaling application that provides users with AI-powered insights into their emotions, self-talk, and goal progress.
-
-The system is designed for personal growth through reflection, emotional awareness, and goal tracking.
+This repository contains the **full-stack codebase** for a journaling application that helps users reflect, track emotional growth, and make progress on goals using AI insights.
 
 ---
 
-## 🗂 Project Structure
+## 📂 Project Structure
 
 ```
 /Journaling-App
-├── backend/       # FastAPI backend for authentication, journals, goals, and AI insights
-├── README.md      # Root overview
+├── backend/        # FastAPI backend for authentication, journals, goals, and AI analysis
+├── frontend/       # Vite + React + TypeScript frontend with shadcn/ui and Tailwind
+├── README.md       # Root overview (this file)
 ```
 
 ---
@@ -21,39 +19,57 @@ The system is designed for personal growth through reflection, emotional awarene
 
 Each folder contains its own `README.md` with setup instructions.
 
-Start with:
+Start by navigating to either folder:
 
 ```bash
-cd backend/
+cd frontend/   # for the frontend app
+cd backend/    # for the backend API
 ```
+
+Then follow the README in each directory to run locally or deploy.
 
 ---
 
 ## 📦 Tech Summary
 
-- **Backend**: FastAPI, PostgreSQL, Hugging Face Transformers, Docker  
-- **Auth**: JWT  
-- **AI Models**: RoBERTa, T5, spaCy, custom pipelines, OpenAI  
-- **DevOps**: Docker, Docker Compose, CI/CD-ready  
+### Backend
+
+* **Framework**: FastAPI
+* **Database**: PostgreSQL
+* **AI Models**: Hugging Face (T5, RoBERTa, spaCy), OpenAI (optional)
+* **Auth**: JWT with refresh tokens (HTTP-only cookie)
+* **DevOps**: Docker, Cloudflare, optional CI/CD
+
+### Frontend
+
+* **Framework**: React + TypeScript (Vite)
+* **UI**: shadcn/ui, Tailwind CSS, Headless UI
+* **Routing**: React Router v6
+* **State/Auth**: Context API, JWT
+* **Deployment**: Vercel
 
 ---
 
 ## ✨ Key Features
 
-- Secure authentication and Apple login  
-- Encrypted journal entry management  
-- Goal tracking with AI-powered feedback  
-- NLP-based sentiment, emotion, and goal analysis  
-- Full REST API with Swagger docs  
-- Deployable via Docker or cloud providers  
+* Secure auth with Apple login (coming soon)
+* AI-powered journal and goal analysis
+* Emotion, tone, energy, and sentiment insights
+* Goal progress tracking with journal integration
+* Real-time UI feedback, modals, and confirmation dialogs
+* Responsive layout with mobile-first design
+* Local + cloud-ready architecture
 
 ---
 
 ## 👥 Author
 
-**Ayush Kadakia**  
+**Ayush Kadakia**
 [LinkedIn](https://linkedin.com/in/ayush-kadakia1/) • [GitHub](https://github.com/AyushKada)
 
 ---
 
-For detailed setup, API routes, and deployment, see [`backend/README.md`](./backend/README.md)
+For detailed setup, API routes, and deployment instructions:
+
+* See [`backend/README.md`](./backend/README.md)
+* See [`frontend/README.md`](./frontend/README.md)

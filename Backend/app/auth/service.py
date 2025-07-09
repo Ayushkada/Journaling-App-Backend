@@ -366,3 +366,73 @@ def handle_token_refresh(refresh_token: str, db: Session) -> TokenResponse:
     refresh_token = create_token(user.id, token_type="refresh")
 
     return TokenResponse(access_token=access_token, user=UserOut.model_validate(user)), refresh_token
+
+
+def update_user_email(user: User, new_email: str, db: Session):
+    """
+    Updates the user's email address.
+
+    Args:
+        user (User): The currently authenticated user object.
+        new_email (str): The new email address to update to.
+        db (Session): Active DB session.
+
+    Returns:
+        User: The updated user object.
+    """
+
+    user.email = new_email
+
+    db.commit()
+
+    db.refresh(user)
+
+    return user
+
+
+def update_user_username(user: User, new_username: str, db: Session):
+    """
+    Updates the user's username.
+
+    Args:
+        user (User): The currently authenticated user object.
+        new_username (str): The new username to update to.
+        db (Session): Active DB session.
+
+    Returns:
+        User: The updated user object.
+    """
+
+    user.name = new_username
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def update_user_password(user: User, old_password: str, new_password: str, db: Session):
+    """
+    Updates the user's password after verifying the old password.
+
+    Args:
+        user (User): The currently authenticated user object.
+        old_password (str): The user's current password (for verification).
+        new_password (str): The new password to set.
+        db (Session): Active DB session.
+
+    Returns:
+        User: The updated user object.
+
+    Raises:
+        HTTPException: If the old password does not match.
+    """
+
+    if not verify_password(old_password, user.password):
+        raise HTTPException(status_code=400, detail="Old password is incorrect")
+
+    user.password = hash_password(new_password)
+
+    db.commit()
+
+    db.refresh(user)
+
+    return user

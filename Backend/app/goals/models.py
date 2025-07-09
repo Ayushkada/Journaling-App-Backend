@@ -12,9 +12,10 @@ class Goal(Base):
 
     content = Column(String, nullable=False)
     ai_generated = Column(Boolean, default=False)
-    category = Column(String, nullable=True)
+    category = Column(ARRAY(String), nullable=True)
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, nullable=True)
     emotion_trend = Column(JSON, nullable=True)
     first_mentioned_at = Column(DateTime, nullable=True)
     last_mentioned_at = Column(DateTime, nullable=True)

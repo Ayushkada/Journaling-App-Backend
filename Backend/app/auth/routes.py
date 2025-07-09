@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.auth.models import User
 from app.auth.schemas import (
+    ChangeEmailRequest,
+    ChangePasswordRequest,
+    ChangeUsernameRequest,
     UserCreate,
     UserOut,
     LoginRequest,
@@ -20,6 +23,9 @@ from app.auth.service import (
     handle_google_login,
     get_current_user,
     handle_token_refresh,
+    update_user_email,
+    update_user_password,
+    update_user_username,
 )
 from app.core.config import GOOGLE_CLIENT_ID, GOOGLE_REDIRECT_URI
 
@@ -34,7 +40,7 @@ def set_refresh_cookie(response: Response, refresh_token: str):
         httponly=True,
         secure=True,
         samesite="strict",
-        path="/auth/refresh",
+        path="/",
     )
 
 
@@ -203,5 +209,62 @@ def refresh_token_route(
     },
 )
 def logout_route(response: Response) -> dict:
-    response.delete_cookie("refresh_token", path="/auth/refresh")
+    response.delete_cookie(
+        key="refresh_token",
+        path="/",  # should match the path used when setting the cookie
+        samesite="strict",
+        secure=False,
+        httponly=True,
+    )
     return {"detail": "Logged out"}
+
+
+@router.put(
+    "/change-email",
+    response_model=UserOut,
+    summary="Change user email",
+)
+def change_email(
+    request: ChangeEmailRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    updated_user = update_user_email(user, request.new_email, db)
+    return UserOut.model_validate(updated_user)
+
+
+@router.put(
+    "/change-username",
+    response_model=UserOut,
+    summary="Change user username",
+)
+def change_username(
+    request: ChangeUsernameRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    updated_user = update_user_username(user, request.new_username, db)
+    return UserOut.model_validate(updated_user)
+
+
+@router.put(
+    "/change-password",
+    summary="Change user password",
+    responses={
+        200: {"description": "Password updated"},
+        400: {"description": "Old password is incorrect"},
+    },
+)
+def change_password(
+    request: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    update_user_password(user, request.old_password, request.new_password, db)
+    return {"detail": "Password updated successfully"}
+
+@router.delete("/delete", summary="Delete account")
+def delete_account(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db.delete(user)
+    db.commit()
+    return {"detail": "Account deleted successfully"}

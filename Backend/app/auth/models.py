@@ -19,6 +19,3 @@ class User(Base):
     storage_type = Column(String, default="local")  # "local" or "icloud"
     storage_path = Column(String, nullable=True)
 
-    # Optional: if using relationships in journals/goals
-    journals = relationship("JournalEntry", back_populates="user", cascade="all, delete-orphan")
-    goals = relationship("Goal", back_populates="user", cascade="all, delete-orphan")

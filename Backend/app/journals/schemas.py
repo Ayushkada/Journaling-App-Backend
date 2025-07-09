@@ -16,6 +16,7 @@ class JournalEntryBase(BaseSchema):
     title: Optional[str] = None
     content: str
     date: datetime
+    updated_date: Optional[datetime] = None
     emojis: Optional[List[str]] = None
     images: Optional[List[str]] = None
     analyze_images: bool = False
@@ -37,6 +38,7 @@ class JournalEntryUpdate(BaseSchema):
     title: Optional[str] = None
     content: Optional[str] = None
     date: Optional[datetime] = None
+    updated_date: datetime
     emojis: Optional[List[str]] = None
     images: Optional[List[str]] = None
     analyze_images: Optional[bool] = None

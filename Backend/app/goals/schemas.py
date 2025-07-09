@@ -14,9 +14,10 @@ class GoalBase(BaseSchema):
     parent_goal_id: Optional[UUID] = None
     content: str
     ai_generated: bool
-    category: Optional[str] = None
+    category: Optional[List[str]] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
     emotion_trend: Optional[List[float]] = None
     first_mentioned_at: Optional[datetime] = None
     last_mentioned_at: Optional[datetime] = None
@@ -29,7 +30,7 @@ class GoalBase(BaseSchema):
 class GoalCreate(BaseSchema):
     content: str
     ai_generated: bool
-    category: Optional[str] = None
+    category: Optional[List[str]] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
     emotion_trend: Optional[List[float]] = None
@@ -45,8 +46,9 @@ class GoalCreate(BaseSchema):
 class GoalUpdate(BaseSchema):
     content: Optional[str] = None
     ai_generated: Optional[bool] = None
-    category: Optional[str] = None
+    category: Optional[List[str]] = None
     completed_at: Optional[datetime] = None
+    updated_at: datetime
     emotion_trend: Optional[List[float]] = None
     first_mentioned_at: Optional[datetime] = None
     last_mentioned_at: Optional[datetime] = None

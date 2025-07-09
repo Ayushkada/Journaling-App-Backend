@@ -42,7 +42,7 @@ def get_journal(db: Session, journal_id: UUID, user_id: UUID) -> Optional[Journa
 
 def get_user_journals(db: Session, user_id: UUID, skip: int = 0, limit: int = 100) -> List[JournalEntry]:
     """
-    Retrieves a paginated list of journal entries for a user.
+    Retrieves a paginated list of journal entries for a user, sorted by date descending.
 
     Args:
         db (Session): SQLAlchemy session.
@@ -53,9 +53,15 @@ def get_user_journals(db: Session, user_id: UUID, skip: int = 0, limit: int = 10
     Returns:
         List[JournalEntry]: List of journal entries.
     """
-    return db.query(JournalEntry).filter(
-        JournalEntry.user_id == user_id
-    ).offset(skip).limit(limit).all()
+    return (
+        db.query(JournalEntry)
+        .filter(JournalEntry.user_id == user_id)
+        .order_by(JournalEntry.date.desc())  # ✅ consistent ordering
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
 
 
 def create_journal(db: Session, journal: JournalEntryCreate, user_id: UUID) -> JournalEntry:

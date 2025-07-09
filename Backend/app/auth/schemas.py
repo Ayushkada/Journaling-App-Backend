@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from uuid import UUID
 
@@ -38,3 +38,15 @@ class TokenResponse(BaseModel):
 
 class GoogleLoginRequest(BaseSchema):
     code: str
+
+
+class ChangeEmailRequest(BaseModel):
+    new_email: EmailStr
+
+
+class ChangeUsernameRequest(BaseModel):
+    new_username: str
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str

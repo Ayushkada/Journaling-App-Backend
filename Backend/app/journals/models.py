@@ -14,6 +14,7 @@ class JournalEntry(Base):
     title = Column(String, nullable=True)
     content = Column(String, nullable=False)
     date = Column(DateTime, nullable=False)
+    updated_date = Column(DateTime, nullable=True)
 
     emojis = Column(ARRAY(String), nullable=True)
     images = Column(ARRAY(String), nullable=True)

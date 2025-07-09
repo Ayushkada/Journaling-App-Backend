@@ -22,7 +22,7 @@ def create_goal(db: Session, goal: GoalCreate, user_id: UUID) -> Goal:
         id=uuid4(),
         user_id=user_id,
         content=goal.content,
-        aiGenerated=goal.aiGenerated,
+        ai_generated=goal.ai_generated,
         category=goal.category,
         created_at=goal.created_at,
         completed_at=goal.completed_at,
@@ -32,8 +32,8 @@ def create_goal(db: Session, goal: GoalCreate, user_id: UUID) -> Goal:
         time_limit=goal.time_limit,
         verified=goal.verified,
         notes=goal.notes,
-        first_mensioned_at=goal.first_mensioned_at,
-        last_mensioned_at=goal.last_mensioned_at,
+        first_mentioned_at=goal.first_mentioned_at,
+        last_mentioned_at=goal.last_mentioned_at,
     )
     db.add(new_goal)
     db.commit()

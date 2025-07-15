@@ -39,7 +39,7 @@ def set_refresh_cookie(response: Response, refresh_token: str):
         value=refresh_token,
         httponly=True,
         secure=True,
-        samesite="strict",
+        samesite="none",
         path="/",
     )
 
@@ -212,7 +212,7 @@ def logout_route(response: Response) -> dict:
     response.delete_cookie(
         key="refresh_token",
         path="/",  # should match the path used when setting the cookie
-        samesite="strict",
+        samesite="none",
         secure=True,
         httponly=True,
     )

@@ -128,6 +128,32 @@ def update_journal_route(
 
 
 @router.delete(
+    "/all",
+    response_model=Dict[str, str],
+    summary="Delete all journals",
+    description="Permanently delete all journal entries for the authenticated user.",
+    responses={
+        200: {"description": "All journals deleted successfully."},
+        401: {"description": "Unauthorized."},
+        404: {"description": "No journals found."},
+        500: {"description": "Failed to delete journals."},
+    },
+)
+def delete_all_journals_route(
+    db: Session = Depends(get_db),
+    user_id: UUID = Security(get_current_user_id),
+) -> Dict[str, str]:
+    try:
+        deleted = delete_all_journals(db, user_id)
+        if not deleted:
+            return {"detail": "All journals deleted successfully."}
+        return {"detail": "All journals deleted successfully."}
+    except Exception as e:
+        logger.error(f"Error deleting all journals for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete journals")
+
+
+@router.delete(
     "/{journal_id}",
     response_model=Dict[str, str],
     summary="Delete a journal by ID",
@@ -152,29 +178,3 @@ def delete_journal_route(
     except Exception as e:
         logger.error(f"Error deleting journal {journal_id} for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete journal")
-
-
-@router.delete(
-    "/all",
-    response_model=Dict[str, str],
-    summary="Delete all journals",
-    description="Permanently delete all journal entries for the authenticated user.",
-    responses={
-        200: {"description": "All journals deleted successfully."},
-        401: {"description": "Unauthorized."},
-        404: {"description": "No journals found."},
-        500: {"description": "Failed to delete journals."},
-    },
-)
-def delete_all_journals_route(
-    db: Session = Depends(get_db),
-    user_id: UUID = Security(get_current_user_id),
-) -> Dict[str, str]:
-    try:
-        deleted = delete_all_journals(db, user_id)
-        if not deleted:
-            raise HTTPException(status_code=404, detail="No journals found to delete")
-        return {"detail": "All journals deleted successfully."}
-    except Exception as e:
-        logger.error(f"Error deleting all journals for user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete journals")

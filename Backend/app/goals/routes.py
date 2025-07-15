@@ -119,6 +119,32 @@ def update_goal_route(
 
 
 @router.delete(
+    "/all",
+    response_model=Dict[str, str],
+    summary="Delete all user goals",
+    description="Permanently delete all goals associated with the authenticated user.",
+    responses={
+        200: {"description": "All goals deleted successfully."},
+        401: {"description": "Unauthorized."},
+        404: {"description": "No goals found."},
+        500: {"description": "Failed to delete goals."},
+    },
+)
+def delete_all_goals_route(
+    db: Session = Depends(get_db),
+    user_id: UUID = Security(get_current_user_id),
+) -> Dict[str, str]:
+    try:
+        deleted = delete_all_goals(db, user_id)
+        if not deleted:
+            return {"detail": "All goals deleted successfully."}
+        return {"detail": "All goals deleted successfully."}
+    except Exception as e:
+        logger.error(f"Failed to delete all goals for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete goals")
+
+
+@router.delete(
     "/{goal_id}",
     response_model=Dict[str, str],
     summary="Delete a goal",
@@ -143,29 +169,3 @@ def delete_goal_route(
     except Exception as e:
         logger.error(f"Failed to delete goal {goal_id} for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete goal")
-
-
-@router.delete(
-    "/all",
-    response_model=Dict[str, str],
-    summary="Delete all user goals",
-    description="Permanently delete all goals associated with the authenticated user.",
-    responses={
-        200: {"description": "All goals deleted successfully."},
-        401: {"description": "Unauthorized."},
-        404: {"description": "No goals found."},
-        500: {"description": "Failed to delete goals."},
-    },
-)
-def delete_all_goals_route(
-    db: Session = Depends(get_db),
-    user_id: UUID = Security(get_current_user_id),
-) -> Dict[str, str]:
-    try:
-        deleted = delete_all_goals(db, user_id)
-        if not deleted:
-            raise HTTPException(status_code=404, detail="No goals found to delete")
-        return {"detail": "All goals deleted successfully."}
-    except Exception as e:
-        logger.error(f"Failed to delete all goals for user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete goals")

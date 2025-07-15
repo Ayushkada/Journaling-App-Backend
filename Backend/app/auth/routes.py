@@ -213,7 +213,7 @@ def logout_route(response: Response) -> dict:
         key="refresh_token",
         path="/",  # should match the path used when setting the cookie
         samesite="strict",
-        secure=False,
+        secure=True,
         httponly=True,
     )
     return {"detail": "Logged out"}
@@ -263,8 +263,11 @@ def change_password(
     update_user_password(user, request.old_password, request.new_password, db)
     return {"detail": "Password updated successfully"}
 
+
 @router.delete("/delete", summary="Delete account")
-def delete_account(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def delete_account(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
     db.delete(user)
     db.commit()
     return {"detail": "Account deleted successfully"}

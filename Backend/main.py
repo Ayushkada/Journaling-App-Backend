@@ -9,14 +9,14 @@ from app.core.database import Base, engine
 app = FastAPI(
     title="Journal API",
     version="1.0.0",
-    description="Backend for JRL — journaling, feedback, and AI-driven analysis."
+    description="Backend for JRL — journaling, feedback, and AI-driven analysis.",
 )
 
 # CORS config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080"],  
-    allow_credentials=True,                   
+    allow_origins=["https://journaling-app-frontend-ecru.vercel.app"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -26,6 +26,7 @@ app.include_router(auth_router.router)
 app.include_router(goals_router.router)
 app.include_router(journals_router.router)
 app.include_router(analysis_router.router)
+
 
 # DB Tables
 @app.on_event("startup")

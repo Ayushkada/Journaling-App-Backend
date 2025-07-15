@@ -1,5 +1,7 @@
 ## 📓 Journaling App Backend
 
+## 🌐 [Live Demo](https://journaling-app-frontend-ecru.vercel.app/)
+
 ## 🚀 Project Overview  
 This is the backend for a journaling application built with FastAPI. It exposes secure, RESTful API endpoints for user authentication, journal management, goal tracking, and AI-powered analysis. The system helps users reflect on their mental and emotional health while tracking personal progress through data insights.
 

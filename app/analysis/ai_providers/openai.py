@@ -132,6 +132,21 @@ PROMPTS_ARRAY_SCHEMA: dict[str, Any] = {
 
 # Validation models are imported from analysis.schemas for separation of concerns
 
+# Strict schema for feedback JSON to keep fields as strings
+FEEDBACK_JSON_SCHEMA: dict[str, Any] = {
+    "name": "feedback_object",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "feedback": {"type": "string"},
+            "reflectiveQuestion": {"type": "string"},
+            "motivation": {"type": "string"}
+        },
+        "required": ["feedback", "reflectiveQuestion", "motivation"],
+        "additionalProperties": False
+    }
+}
+
 def _chat_json(
     messages: List[dict[str, Any]], *, max_tokens: int = 512, response_format_type: Optional[str] = "json_object", response_format_schema: Optional[dict[str, Any]] = None
 ) -> Any:
@@ -418,6 +433,112 @@ class OpenAIAIService:
                 "keywordEnergyMap": {},
                 "journalWeights": {},
             }
+
+        # Deterministic backfill for empty maps using available analyzed data
+        try:
+            # 1) Entry weights by recency (0.5 .. 1.0)
+            def _date_val(a: JournalAnalysisBase) -> str:
+                d = getattr(a, "date", None) or getattr(a, "analysis_date", None)
+                try:
+                    return d[:10] if isinstance(d, str) else d.isoformat()[:10]
+                except Exception:
+                    return ""
+
+            sorted_entries = sorted(analyzed, key=lambda x: _date_val(x))
+            total = max(len(sorted_entries) - 1, 1)
+            entry_weights: dict[str, float] = {
+                str(e.id): round(0.5 + 0.5 * (i / total), 3) for i, e in enumerate(sorted_entries)
+            }
+
+            # 2) Keyword emotion/energy maps
+            kw_emotion_acc: dict[str, dict[str, list[float]]] = {}
+            kw_energy_acc: dict[str, list[float]] = {}
+            for a in analyzed:
+                weight = entry_weights.get(str(a.id), 1.0)
+                cm = getattr(a, "combined_mood", {}) or {}
+                kws = (getattr(a, "keywords", {}) or {}).keys()
+                for kw in kws:
+                    em = kw_emotion_acc.setdefault(kw, {})
+                    for emotion, score in cm.items():
+                        em.setdefault(emotion, []).append(float(score) * weight)
+                    kw_energy_acc.setdefault(kw, []).append(float(getattr(a, "energy_score", 0.0)) * weight)
+
+            def _avg_list(vals: list[float]) -> float:
+                return round(sum(vals) / max(len(vals), 1), 3) if vals else 0.0
+
+            kw_emotion_final: dict[str, dict[str, float]] = {
+                kw: {emo: _avg_list(vals) for emo, vals in emo_map.items()} for kw, emo_map in kw_emotion_acc.items()
+            }
+            kw_energy_final: dict[str, float] = {kw: _avg_list(vals) for kw, vals in kw_energy_acc.items()}
+
+            # 3) Goal matches and goal emotion map
+            # Prepare journal embedding matrix and ids
+            journal_ids: list[str] = [str(a.id) for a in analyzed]
+            journal_embs: list[list[float]] = [list(getattr(a, "text_embedding", []) or []) for a in analyzed]
+
+            def _norm(vec: list[float]) -> float:
+                return (sum(v * v for v in vec)) ** 0.5
+
+            def _cosine(a: list[float], b: list[float]) -> float:
+                da = _norm(a)
+                db = _norm(b)
+                if da == 0.0 or db == 0.0:
+                    return 0.0
+                return sum(x * y for x, y in zip(a, b)) / (da * db)
+
+            goal_emotion_map: dict[str, dict[str, float]] = {}
+            goal_matches: dict[str, list[str]] = {}
+            goal_progress: dict[str, dict] = {}
+
+            for g in goals[:50]:
+                gtext = f"{getattr(g, 'content', '')}"
+                try:
+                    gemb = _embed(gtext)  # type: ignore
+                except Exception:
+                    gemb = []
+                matched_idxs: list[int] = []
+                thr = float(getattr(prompts, "GOAL_MATCH_THRESHOLD", 0.5))
+                if gemb and journal_embs:
+                    for i, emb in enumerate(journal_embs):
+                        if not emb:
+                            continue
+                        if _cosine(gemb, emb) >= thr:  # type: ignore[arg-type]
+                            matched_idxs.append(i)
+
+                # Aggregate
+                related_moods: dict[str, list[float]] = {}
+                matched_ids: list[str] = []
+                for i in matched_idxs:
+                    a = analyzed[i]
+                    matched_ids.append(journal_ids[i])
+                    cm = getattr(a, "combined_mood", {}) or {}
+                    for emotion, score in cm.items():
+                        related_moods.setdefault(emotion, []).append(float(score))
+
+                gid = str(getattr(g, "id", ""))
+                if matched_ids:
+                    goal_emotion_map[gid] = {e: _avg_list(vals) for e, vals in related_moods.items()}
+                goal_matches[gid] = matched_ids
+                perf = round(len(matched_ids) / max(len(journal_ids), 1), 3)
+                status = "on_track" if (float(getattr(g, "progress_score", 0.0) or 0.0) >= 0.8) else "behind"
+                goal_progress[gid] = {"mentions": len(matched_ids), "performanceScore": perf, "status": status}
+
+            # 4) Merge into raw only if empty/missing
+            if not raw.get("keywordEmotionMap"):
+                raw["keywordEmotionMap"] = kw_emotion_final
+            if not raw.get("keywordEnergyMap"):
+                raw["keywordEnergyMap"] = kw_energy_final
+            if not raw.get("journalWeights"):
+                raw["journalWeights"] = entry_weights
+            if not raw.get("goalEmotionMap"):
+                raw["goalEmotionMap"] = goal_emotion_map
+            if not raw.get("goalMatches"):
+                raw["goalMatches"] = goal_matches
+            if not raw.get("goalProgress"):
+                raw["goalProgress"] = goal_progress
+        except Exception as _e:
+            # Keep best-effort raw
+            logger.warning(f"Connected deterministic backfill failed: {_e}")
         # Post-process: fill missing dates and smooth trends (EMA)
         def _parse_date(s: str) -> _dt.date:
             try:
@@ -504,13 +625,40 @@ class OpenAIAIService:
         prompt = prompts.FEEDBACK_USER_TEMPLATE.format(
             tone_style=tone_style, connected_json=json.dumps(connected.model_dump(), default=str)
         )
-        return _chat_json(
+        raw = _chat_json(
             [
                 {"role": "system", "content": prompts.FEEDBACK_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            response_format_type="json_object",
+            response_format_type=None,
+            response_format_schema=FEEDBACK_JSON_SCHEMA,
         )
+        # Normalize to strings defensively
+        def _to_str(val: Any) -> str:
+            if isinstance(val, str):
+                return val
+            if isinstance(val, dict):
+                # Flatten dict sections into a readable paragraph
+                parts = []
+                for k, v in val.items():
+                    try:
+                        text = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+                    except Exception:
+                        text = str(v)
+                    parts.append(f"{k}: {text}")
+                return "\n".join(parts)
+            if isinstance(val, list):
+                return "\n".join(_to_str(x) for x in val)
+            try:
+                return str(val)
+            except Exception:
+                return ""
+
+        return {
+            "feedback": _to_str(raw.get("feedback", "")),
+            "reflectiveQuestion": _to_str(raw.get("reflectiveQuestion", "")),
+            "motivation": _to_str(raw.get("motivation", "")),
+        }
 
     @staticmethod
     def recommend_journaling_prompts(connected: ConnectedAnalysisCreate, *, tone_style: str = "friendly") -> list[str]:

@@ -1,11 +1,11 @@
 import datetime
 from uuid import UUID
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Set, Iterable, Tuple
 
 from sqlalchemy.orm import Session
 from app.journals.models import JournalEntry
-from app.analysis.models import ConnectedAnalysis, Feedback, JournalAnalysis
-from app.analysis.schemas import ConnectedAnalysisCreate, FeedbackCreate, JournalAnalysisCreate
+from app.analysis.models import ConnectedAnalysis, Feedback, JournalAnalysis, PromptCatalog, UserPrompt, PromptInteraction
+from app.analysis.schemas import ConnectedAnalysisCreate, FeedbackCreate, JournalAnalysisCreate, PromptCatalogCreate, UserPromptCreate, PromptInteractionCreate
 
 
 def get_all_user_journal_analyses(db: Session, user_id: UUID, skip: int = 0, limit: int = 100) -> List[JournalAnalysis]:
@@ -299,3 +299,129 @@ def delete_feedback(db: Session, user_id: UUID) -> Optional[Feedback]:
         db.commit()
         return feedback
     return None
+
+
+# -------------------- Prompt Catalog & User Prompts --------------------
+
+def list_prompt_catalog(
+    db: Session,
+    *,
+    limit: int = 10,
+    tone: Optional[str] = None,
+    exclude_texts: Optional[Set[str]] = None,
+    topics: Optional[List[str]] = None,
+    time_budget: Optional[float] = None,
+) -> List[PromptCatalog]:
+    q = db.query(PromptCatalog)
+    if tone:
+        q = q.filter(PromptCatalog.tone == tone)
+    results = q.order_by(PromptCatalog.created_at.desc()).limit(limit * 4).all()
+    # Client-side filter for topics/time as tags/time_estimate are JSON/float fields
+    def _ok(p: PromptCatalog) -> bool:
+        if exclude_texts and (p.text.strip().lower() in exclude_texts):
+            return False
+        if topics:
+            tags = p.tags or []
+            if not any(t.lower() in {tag.lower() for tag in tags} for t in topics):
+                return False
+        if time_budget is not None and p.time_estimate is not None:
+            if p.time_estimate > time_budget:
+                return False
+        return True
+    filtered = [p for p in results if _ok(p)]
+    return filtered[:limit]
+
+
+def create_prompt_catalog(db: Session, data: PromptCatalogCreate) -> PromptCatalog:
+    obj = PromptCatalog(
+        text=data.text,
+        tone=data.tone,
+        tags=data.tags,
+        time_estimate=data.time_estimate,
+        source=data.source,
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+def list_user_favorites(db: Session, user_id: UUID, skip: int = 0, limit: int = 50) -> List[UserPrompt]:
+    return (
+        db.query(UserPrompt)
+        .filter(UserPrompt.user_id == user_id, UserPrompt.is_favorite == True)
+        .order_by(UserPrompt.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+
+def create_user_favorite(db: Session, user_id: UUID, data: UserPromptCreate) -> UserPrompt:
+    # Deduplicate by text for user
+    existing = (
+        db.query(UserPrompt)
+        .filter(UserPrompt.user_id == user_id, UserPrompt.text == data.text, UserPrompt.is_favorite == True)
+        .first()
+    )
+    if existing:
+        return existing
+    obj = UserPrompt(
+        user_id=user_id,
+        catalog_id=data.catalog_id,
+        text=data.text,
+        tone=data.tone,
+        tags=data.tags,
+        source=data.source,
+        is_favorite=True,
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+def delete_user_favorite(db: Session, user_id: UUID, favorite_id: UUID) -> Optional[UserPrompt]:
+    fav = db.query(UserPrompt).filter(UserPrompt.id == favorite_id, UserPrompt.user_id == user_id, UserPrompt.is_favorite == True).first()
+    if fav:
+        db.delete(fav)
+        db.commit()
+        return fav
+    return None
+
+
+def record_prompt_interaction(db: Session, user_id: UUID, data: PromptInteractionCreate) -> PromptInteraction:
+    obj = PromptInteraction(
+        user_id=user_id,
+        catalog_id=data.catalog_id,
+        prompt_text=data.prompt_text,
+        event=data.event,
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+def get_prompt_interaction_scores(
+    db: Session,
+    user_id: UUID,
+    texts: Iterable[str],
+) -> Dict[str, Dict[str, int]]:
+    """Aggregate simple counts by event per prompt_text for a user."""
+    text_list = [t.strip() for t in texts if t and t.strip()]
+    if not text_list:
+        return {}
+    rows = (
+        db.query(PromptInteraction.prompt_text, PromptInteraction.event)
+        .filter(
+            PromptInteraction.user_id == user_id,
+            PromptInteraction.prompt_text.in_(text_list),
+        )
+        .all()
+    )
+    out: Dict[str, Dict[str, int]] = {}
+    for prompt_text, event in rows:
+        d = out.setdefault(prompt_text, {})
+        d[event] = d.get(event, 0) + 1
+    return out

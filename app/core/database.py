@@ -19,6 +19,7 @@ Base = declarative_base()
 import app.auth.models  # noqa: F401
 import app.goals.models  # noqa: F401
 import app.journals.models  # noqa: F401
+import app.analysis.models  # noqa: F401
 
 
 # Dependency for FastAPI Routes

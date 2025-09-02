@@ -17,9 +17,11 @@ from app.analysis.service import (
     give_feedback,
     give_recommendations,
     create_goals_with_ai,
+    update_existing_goals_with_ai,
     pick_ai_service
 )
-from app.journals.db import get_user_journals
+from app.journals.db import get_user_journals, get_journal
+from app.journals.schemas import JournalEntryBase
 from app.analysis.db import (
     delete_connected_analysis,
     delete_journal_analysis,
@@ -29,8 +31,15 @@ from app.analysis.db import (
     get_journal_analyses_by_ids,
     get_journal_analysis,
     upsert_connected_analysis,
-    upsert_feedback
+    upsert_feedback,
+    list_prompt_catalog,
+    list_user_favorites,
+    create_user_favorite,
+    delete_user_favorite,
+    record_prompt_interaction,
+    get_prompt_interaction_scores
 )
+from app.analysis.schemas import UserPromptCreate, PromptInteractionCreate
 from app.goals.db import get_user_goals, create_goal
 
 router = APIRouter(prefix="/analysis", tags=["Analysis"])
@@ -57,7 +66,7 @@ def full_analysis_route(
     feedback_tone: str = Query("calm", description="Tone for AI-generated feedback."),
     prompt_tone: str = Query("friendly", description="Tone for journaling prompts."),
     model: Literal["local-small", "local-large", "chatgpt"] = Query(
-        "local-small", description="Engine: local-small | local-large | chatgpt"
+        "chatgpt", description="Engine: local-small | local-large | chatgpt"
     ),
 ) -> Dict[str, Any]:
     try:
@@ -75,7 +84,7 @@ def full_analysis_route(
 
 @router.post(
     "/journals",
-    response_model=Dict[str, Any],
+    response_model=List[JournalAnalysisBase],
     tags=["Analysis"],
     summary="Analyze and store recent user journals",
     description="""
@@ -92,9 +101,9 @@ def analyze_journals_route(
     db: Session = Depends(get_db),
     user_id: UUID = Security(get_current_user_id),
     model: Literal["local-small", "local-large", "chatgpt"] = Query(
-        "local-small", description="Engine: local-small | local-large | chatgpt"
+        "chatgpt", description="Engine: local-small | local-large | chatgpt"
     ),
-) -> Dict[str, Any]:
+) -> List[JournalAnalysisBase]:
     logger.info(
         f"Analyzing journals for user {user_id} using model: {model or 'default'}"
     )
@@ -214,7 +223,7 @@ def generate_connected_analysis_route(
     db: Session = Depends(get_db),
     user_id: UUID = Security(get_current_user_id),
     model: Literal["local-small", "local-large", "chatgpt"] = Query(
-        "local-small", description="Engine: local-small | local-large | chatgpt"
+        "chatgpt", description="Engine: local-small | local-large | chatgpt"
     ),
 ) -> Dict[str, Any]:
     try:
@@ -322,7 +331,7 @@ def create_feedback_route(
         "calm", description="Tone for feedback (e.g., calm, supportive, direct)"
     ),
     model: Literal["local-small", "local-large", "chatgpt"] = Query(
-        "local-small", description="Engine to use for feedback generation"
+         "chatgpt", description="Engine: local-small | local-large | chatgpt"
     ),
 ) -> Dict[str, Any]:
     try:
@@ -330,7 +339,7 @@ def create_feedback_route(
         connected = get_connected_analysis(db, user_id)
         if not connected:
             raise HTTPException(status_code=404, detail="No connected analysis found")
-        feedback = give_feedback(connected.analysis, ai_service, tone)
+        feedback = give_feedback(connected, ai_service, tone)
         upsert_feedback(db, feedback, user_id)
         return {
             "feedback": feedback.feedback,
@@ -412,7 +421,7 @@ def create_prompts_route(
         description="Tone for prompts (e.g., friendly, reflective, motivational)",
     ),
     model: Literal["local-small", "local-large", "chatgpt"] = Query(
-        "local-small", description="Engine to use for prompt generation"
+ "chatgpt", description="Engine: local-small | local-large | chatgpt"
     ),
 ) -> Dict[str, Any]:
     try:
@@ -420,12 +429,149 @@ def create_prompts_route(
         connected = get_connected_analysis(db, user_id)
         if not connected:
             raise HTTPException(status_code=404, detail="No connected analysis found")
-        return give_recommendations(connected.analysis, ai_service, tone)
+        prompts_out = give_recommendations(connected, ai_service, tone)
+        return {"prompts": prompts_out}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Prompt generation failed for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate prompts")
+
+
+@router.get(
+    "/prompts/refresh",
+    response_model=Dict[str, Any],
+    tags=["Analysis"],
+    summary="Get refreshed prompts (base + generated)",
+)
+def refresh_prompts_route(
+    db: Session = Depends(get_db),
+    user_id: UUID = Security(get_current_user_id),
+    tone: str = Query("friendly"),
+    limit: int = Query(5, ge=1, le=10),
+    model: Literal["local-small", "local-large", "chatgpt"] = Query("chatgpt"),
+    topics: List[str] = Query(default=[]),
+    time_budget: float = Query(default=None, gt=0) if False else None,
+) -> Dict[str, Any]:
+    ai_service = pick_ai_service(model)
+    connected = get_connected_analysis(db, user_id)
+    if not connected:
+        raise HTTPException(status_code=404, detail="No connected analysis found")
+
+    favorites = list_user_favorites(db, user_id, limit=100)
+    exclude = {f.text.strip().lower() for f in favorites}
+    base_prompts = list_prompt_catalog(
+        db,
+        limit=max(1, limit // 2),
+        tone=tone,
+        exclude_texts=exclude,
+        topics=topics or None,
+        time_budget=time_budget,
+    )
+
+    try:
+        generated = ai_service.recommend_journaling_prompts(connected.analysis, tone)
+    except Exception:
+        generated = []
+
+    seen = set()
+    out: List[Dict[str, Any]] = []
+    for p in base_prompts:
+        key = p.text.strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"text": p.text, "tone": p.tone, "source": "base"})
+        if len(out) >= limit:
+            break
+    if len(out) < limit:
+        # Basic ranking using interactions: prefer thumbs_up and completes
+        scores = get_prompt_interaction_scores(db, user_id, generated)
+        def rank_key(t: str) -> float:
+            s = scores.get(t, {})
+            return s.get("thumbs_up", 0) * 3 + s.get("complete", 0) * 2 - s.get("thumbs_down", 0)
+        generated_sorted = sorted(generated, key=rank_key, reverse=True)
+        for text in generated_sorted:
+            key = str(text).strip().lower()
+            if key in seen or key in exclude:
+                continue
+            seen.add(key)
+            out.append({"text": str(text), "tone": tone, "source": "ai"})
+            if len(out) >= limit:
+                break
+    return {"prompts": out}
+
+
+@router.get(
+    "/prompts/favorites",
+    response_model=Dict[str, Any],
+    tags=["Analysis"],
+    summary="List user's favorite prompts",
+)
+def list_favorite_prompts_route(
+    db: Session = Depends(get_db),
+    user_id: UUID = Security(get_current_user_id),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+) -> Dict[str, Any]:
+    favs = list_user_favorites(db, user_id, skip, limit)
+    return {"favorites": [{"id": f.id, "text": f.text, "tone": f.tone, "source": f.source} for f in favs]}
+
+
+@router.post(
+    "/prompts/favorites",
+    response_model=Dict[str, Any],
+    tags=["Analysis"],
+    summary="Add a favorite prompt",
+)
+def add_favorite_prompt_route(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    user_id: UUID = Security(get_current_user_id),
+) -> Dict[str, Any]:
+    text = str(payload.get("text", "")).strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    tone = payload.get("tone")
+    source = payload.get("source", "ai")
+    created = create_user_favorite(db, user_id, UserPromptCreate(text=text, tone=tone, source=source))
+    return {"favorite": {"id": created.id, "text": created.text, "tone": created.tone, "source": created.source}}
+
+
+@router.delete(
+    "/prompts/favorites/{favorite_id}",
+    response_model=Dict[str, Any],
+    tags=["Analysis"],
+    summary="Remove a favorite prompt",
+)
+def delete_favorite_prompt_route(
+    favorite_id: UUID,
+    db: Session = Depends(get_db),
+    user_id: UUID = Security(get_current_user_id),
+) -> Dict[str, Any]:
+    deleted = delete_user_favorite(db, user_id, favorite_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Favorite not found")
+    return {"deleted": str(favorite_id)}
+
+
+@router.post(
+    "/prompts/feedback",
+    response_model=Dict[str, str],
+    tags=["Analysis"],
+    summary="Record prompt interaction",
+)
+def record_prompt_feedback_route(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    user_id: UUID = Security(get_current_user_id),
+) -> Dict[str, str]:
+    prompt_text = str(payload.get("prompt_text", "")).strip()
+    event = str(payload.get("event", "")).strip()
+    if not prompt_text or event not in {"view", "start", "complete", "thumbs_up", "thumbs_down"}:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    record_prompt_interaction(db, user_id, PromptInteractionCreate(prompt_text=prompt_text, event=event))
+    return {"detail": "ok"}
 
 
 @router.post(
@@ -451,17 +597,19 @@ def generate_ai_goals_route(
     db: Session = Depends(get_db),
     user_id: UUID = Security(get_current_user_id),
     model: Literal["local-small", "local-large", "chatgpt"] = Query(
-        "local-small", description="Engine: local-small | local-large | chatgpt"
+        "chatgpt", description="Engine: local-small | local-large | chatgpt"
     ),
 ) -> Dict[str, Any]:
     try:
         ai_service = pick_ai_service(model)
         journals = get_user_journals(db, user_id, limit=30)
         goals = get_user_goals(db, user_id)
-        _, newly_analyzed = analyze_and_upsert_journals(
+        all_analyses, newly_analyzed = analyze_and_upsert_journals(
             db, user_id, journals, ai_service
         )
-        new_goals = create_goals_with_ai(goals, newly_analyzed, ai_service)
+        # Use all analyses for suggestions and update existing goals inline
+        new_goals = create_goals_with_ai(goals, all_analyses, ai_service)
+        update_existing_goals_with_ai(db, user_id, goals, all_analyses)
 
         current_goal_texts = {g.content for g in goals}
         saved_goals = []

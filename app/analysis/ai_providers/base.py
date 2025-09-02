@@ -22,6 +22,7 @@ import app.analysis.prompts.local_prompts_templates as local_prompts
 from abc import ABC
 
 class AIService(ABC):
+    @staticmethod
     def ensure_nltk_punkt():
         try:
             nltk.data.find("tokenizers/punkt")

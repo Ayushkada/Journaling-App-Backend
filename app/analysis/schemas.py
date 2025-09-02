@@ -1,5 +1,5 @@
 # schemas.py
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Literal
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
@@ -8,12 +8,15 @@ from pydantic import BaseModel
 class BaseSchema(BaseModel):
     class Config:
         from_attributes = True
-        orm_mode = True
+
+
+from app.journals.schemas import JournalEntryCreate
+from app.goals.schemas import GoalCreate
 
 
 class AnalysisRequest(BaseSchema):
-    journals: List["JournalEntryCreate"]  # Use forward references if needed
-    goals: Optional[List["GoalCreate"]] = []
+    journals: List[JournalEntryCreate]
+    goals: Optional[List[GoalCreate]] = []
 
 
 class JournalAnalysisBase(BaseSchema):
@@ -105,3 +108,72 @@ class FeedbackCreate(BaseSchema):
     feedback: str
     reflective_question: str
     motivation: str
+
+class PromptCatalogBase(BaseSchema):
+    id: UUID
+    text: str
+    tone: Optional[str] = None
+    tags: Optional[List[str]] = None
+    time_estimate: Optional[float] = None
+    source: Literal["base", "ai"]
+
+
+class PromptCatalogCreate(BaseSchema):
+    text: str
+    tone: Optional[str] = None
+    tags: Optional[List[str]] = None
+    time_estimate: Optional[float] = None
+    source: Literal["base", "ai"] = "base"
+
+
+class UserPromptBase(BaseSchema):
+    id: UUID
+    user_id: UUID
+    catalog_id: Optional[UUID] = None
+    text: str
+    tone: Optional[str] = None
+    tags: Optional[List[str]] = None
+    source: Literal["base", "ai"]
+    is_favorite: bool
+
+
+class UserPromptCreate(BaseSchema):
+    catalog_id: Optional[UUID] = None
+    text: str
+    tone: Optional[str] = None
+    tags: Optional[List[str]] = None
+    source: Literal["base", "ai"] = "ai"
+    is_favorite: bool = True
+
+
+class PromptInteractionCreate(BaseSchema):
+    catalog_id: Optional[UUID] = None
+    prompt_text: str
+    event: Literal["view", "start", "complete", "thumbs_up", "thumbs_down"]
+
+class EntryLLMResponse(BaseModel):
+    readability: float = 0.0
+    sentimentScore: float = 0.0
+    selfTalkTone: str = "NEUTRAL"
+    energyScore: float = 0.0
+    keywords: Dict[str, int] = {}
+    textMood: Dict[str, float] = {}
+    emojiMood: Dict[str, float] = {}
+    imageMood: Dict[str, float] = {}
+    mood: Dict[str, float] = {}
+    goalMentions: List[str] = []
+    topics: List[Dict[str, str]] = []
+    textVector: Optional[str] = None
+    extractedActions: str = ""
+
+
+class ConnectedLLMResponse(BaseModel):
+    moodTrends: Dict[str, Dict[str, float]] = {}
+    energyTrends: Dict[str, float] = {}
+    averageSentiment: float = 0.0
+    goalEmotionMap: Dict[str, Dict[str, float]] = {}
+    goalProgress: Dict[str, Dict] = {}
+    goalMatches: Dict[str, List[str]] = {}
+    keywordEmotionMap: Dict[str, Dict[str, float]] = {}
+    keywordEnergyMap: Dict[str, float] = {}
+    journalWeights: Dict[str, float] = {}

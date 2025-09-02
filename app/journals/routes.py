@@ -1,3 +1,4 @@
+import datetime as dt
 from uuid import UUID
 from typing import List, Dict
 import logging
@@ -20,6 +21,7 @@ from app.journals.db import (
     delete_journal,
     get_user_journals,
 )
+from app.journals.journals_seed_native import journals
 
 router = APIRouter(prefix="/journals", tags=["Journals"])
 logger = logging.getLogger(__name__)
@@ -98,6 +100,36 @@ def create_journal_route(
         logger.error(f"Error creating journal for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to create journal")
 
+def parse_iso_z(s: str) -> dt.datetime:
+    """Convert '2025-08-13T14:00:49.556Z' → tz-aware UTC datetime"""
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    d = dt.datetime.fromisoformat(s)          # <— correct reference
+    return d.astimezone(dt.timezone.utc)      # <— uses dt.timezone
+
+@router.post("/create-test", status_code=status.HTTP_201_CREATED)
+def create_test_journal_route(
+    db: Session = Depends(get_db),
+    user_id: UUID = Security(get_current_user_id),
+):
+    try:
+        created = 0
+        for j in journals:
+            model = JournalEntryCreate(
+                title=j["title"],
+                content=j["content"],
+                date=parse_iso_z(j["date"]),             # tz-aware UTC datetime
+                emojis=j.get("emojis", []),              # native emoji chars
+                images=j.get("images", []),
+                analyze_images=j.get("analyze_images", False),
+                source=j.get("source", "synthetic_seed"),
+            )
+            create_journal(db, model, user_id)           # <— pass a Pydantic model, not dict
+            created += 1
+        return {"ok": True, "count": created}
+    except Exception as e:
+        logger.exception(f"Error creating journals for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create journals")
 
 @router.put(
     "/{journal_id}",

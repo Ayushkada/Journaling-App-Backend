@@ -1,9 +1,8 @@
 import datetime
 from uuid import UUID
-from typing import List, Dict, Set, Tuple, Any
+from typing import List, Dict, Set, Tuple, Any, Optional
 from app.goals.models import Goal
 from app.goals.schemas import GoalBase
-from app.analysis.ai_providers.local import LocalAIService
 from app.analysis.ai_providers.openai import OpenAIAIService
 from sqlalchemy.orm import Session
 
@@ -15,13 +14,14 @@ from app.analysis.db import (
     upsert_feedback,
     upsert_connected_analysis
 )
-from app.journals.db import get_user_journals
-from app.goals.db import create_goal, get_user_goals
+from app.journals.db import get_user_journals, get_journal
+from app.goals.db import create_goal, get_user_goals, update_goal
 from app.journals.schemas import JournalEntryBase
 from app.analysis.schemas import ConnectedAnalysisBase, FeedbackCreate, JournalAnalysisBase, JournalAnalysisCreate
 from app.journals.models import JournalEntry
 from app.analysis.models import ConnectedAnalysis, JournalAnalysis
-from app.goals.db import GoalCreate
+from app.goals.schemas import GoalCreate, GoalUpdate
+import re
 from app.analysis.ai_providers.base import AIService
 
 DEFAULT_FEEDBACK_TONE = "calm"
@@ -38,11 +38,8 @@ def pick_ai_service(model: str) -> AIService:
     Returns:
         AIService: An instance of the selected AI service.
     """
-    match model:
-        case "chatgpt":
-            return OpenAIAIService()
-        case _:
-            return LocalAIService()
+    # Force OpenAI provider for all inputs
+    return OpenAIAIService()
 
 
 def analyze_and_upsert_journals(
@@ -108,8 +105,28 @@ def analyze_journals_helper(
     matching = []
     not_matching_ids = []
 
+    updated_by_id: Dict[UUID, datetime.datetime] = {}
+    for je in journals:
+        if je.updated_date:
+            updated_by_id[je.id] = je.updated_date
+
+    def _as_aware(dt: datetime.datetime) -> datetime.datetime:
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=datetime.timezone.utc)
+        return dt
+
     for j in existing:
-        if j.model == ai_service.model_tag:
+        same_model = (j.model == ai_service.model_tag)
+        is_stale = False
+        upd = updated_by_id.get(j.journal_id)
+        if upd is not None and j.analysis_date is not None:
+            try:
+                if _as_aware(upd) > _as_aware(j.analysis_date):
+                    is_stale = True
+            except Exception:
+                is_stale = True
+
+        if same_model and not is_stale:
             matching.append(j)
         else:
             not_matching_ids.append(j.journal_id)
@@ -119,7 +136,7 @@ def analyze_journals_helper(
 
     for journal in journals:
         if journal.id not in existing_ids:
-            result = ai_service.analyze_entry(JournalEntryBase.from_orm(journal))
+            result = ai_service.analyze_entry(JournalEntryBase.model_validate(journal))
             newly_analyzed.append(result)
 
     return newly_analyzed, matching, not_matching_ids
@@ -141,8 +158,8 @@ def generate_connected_analysis(
     Returns:
         ConnectedAnalysis: Synthesized AI interpretation across all data.
     """
-    analysis_data = [JournalAnalysisBase.from_orm(j) for j in journal_analyses]
-    goals_data = [GoalBase.from_orm(g) for g in goals]
+    analysis_data = [JournalAnalysisBase.model_validate(j) for j in journal_analyses]
+    goals_data = [GoalBase.model_validate(g) for g in goals]
     return ai_service.analyze_connected(analysis_data, goals_data)
 
 
@@ -163,7 +180,7 @@ def give_feedback(
         FeedbackCreate: Feedback, reflective question, and motivational message.
     """
     feedback_content = ai_service.generate_feedback(
-        ConnectedAnalysisBase.from_orm(connected_analysis), tone_style
+        ConnectedAnalysisBase.model_validate(connected_analysis), tone_style=tone_style
     )
 
     return FeedbackCreate(
@@ -192,7 +209,7 @@ def give_recommendations(
         List[str]: A list of journaling prompts.
     """
     return ai_service.recommend_journaling_prompts(
-        ConnectedAnalysisBase.from_orm(connected_analysis), tone_style
+        ConnectedAnalysisBase.model_validate(connected_analysis), tone_style=tone_style
     )
 
 
@@ -213,7 +230,7 @@ def create_goals_with_ai(
         List[GoalCreate]: Valid AI-generated goals not yet in the system.
     """
     entry_goal_map = {
-        entry.journal_id: entry.goalMentions or []
+        entry.journal_id: (entry.goal_mentions or [])
         for entry in newly_analyzed_entries
     }
 
@@ -229,6 +246,158 @@ def create_goals_with_ai(
             all_generated_goals.append(GoalCreate(**goal_dict))
 
     return all_generated_goals
+
+
+def update_existing_goals_with_ai(
+    db: Session,
+    user_id: UUID,
+    goals: List[Goal],
+    analyses: List[JournalAnalysis],
+) -> None:
+    """Lightweight backend updates for existing goals based on analyzed journals.
+
+    - Merge related_entry_ids with all journals where the goal text appears
+    - Parse simple timeframes ("in 2 weeks/months/years") from goal content; latest mention wins
+    - Update notes with mention counts and simple adherence signal
+    """
+    if not goals or not analyses:
+        return
+
+    # Map normalized goal text to Goal
+    text_to_goal: dict[str, Goal] = {g.content.strip().lower(): g for g in goals}
+
+    # Fuzzy match helper between goal text and mention text
+    def _is_match(goal_text: str, mention_text: str) -> bool:
+        gt = goal_text.strip().lower()
+        mt = mention_text.strip().lower()
+        if not gt or not mt:
+            return False
+        if gt == mt:
+            return True
+        if gt in mt or mt in gt:
+            return True
+        gt_tokens = {w for w in gt.replace("/", " ").split() if len(w) > 2}
+        mt_tokens = {w for w in mt.replace("/", " ").split() if len(w) > 2}
+        if not gt_tokens or not mt_tokens:
+            return False
+        overlap = len(gt_tokens & mt_tokens) / max(len(gt_tokens), 1)
+        return overlap >= 0.5
+
+
+    mentions: dict[str, List[tuple[UUID, str]]] = {}
+    for a in analyses:
+        gm = a.goal_mentions or []
+        a_date_iso = a.date or (a.analysis_date.isoformat() if a.analysis_date else "")
+        for t in gm:
+            for g_text, g in text_to_goal.items():
+                if _is_match(g_text, t):
+                    mentions.setdefault(g_text, []).append((a.journal_id, a_date_iso))
+                    break
+
+    if not mentions:
+        return
+
+    duration_re = re.compile(r"(?P<num>\d+)\s*(?P<unit>day|days|week|weeks|month|months|year|years)", re.I)
+
+    def parse_time_limit(text: str, ref_iso: str) -> Optional[datetime.datetime]:
+        m = duration_re.search(text)
+        if not m:
+            return None
+        num = int(m.group("num"))
+        unit = m.group("unit").lower()
+        try:
+            base = datetime.datetime.fromisoformat(ref_iso.replace("Z", "+00:00")) if ref_iso else None
+        except Exception:
+            base = None
+        if base is None:
+            base = datetime.datetime.now(datetime.timezone.utc)
+        if unit.startswith("day"):
+            return base + datetime.timedelta(days=num)
+        if unit.startswith("week"):
+            return base + datetime.timedelta(weeks=num)
+        if unit.startswith("month"):
+            return base + datetime.timedelta(days=30 * num)
+        if unit.startswith("year"):
+            return base + datetime.timedelta(days=365 * num)
+        return None
+
+
+    ja_by_id: Dict[UUID, JournalAnalysis] = {a.journal_id: a for a in analyses}
+
+
+    positive_keys = {"hope", "hopeful", "contentment", "calm", "trust", "determination", "positive"}
+    negative_keys = {"anxiety", "anxious", "negative", "frustrated", "loneliness", "heaviness"}
+
+    def mood_score(ja: JournalAnalysis) -> float:
+        try:
+            cm = ja.combined_mood or {}
+            if cm:
+                pos = sum(float(cm.get(k, 0.0)) for k in positive_keys)
+                neg = sum(float(cm.get(k, 0.0)) for k in negative_keys)
+                return round(pos - neg, 3)
+            return float(ja.sentiment_score or 0.0)
+        except Exception:
+            return float(ja.sentiment_score or 0.0)
+
+    for key, pairs in mentions.items():
+        goal = text_to_goal[key]
+
+        existing_ids = set(goal.related_entry_ids or [])
+        new_ids = {str(jid) for jid, _ in pairs}
+        combined_ids = list(existing_ids.union(new_ids))
+
+        existing_notes = goal.notes or ""
+        appended_lines: List[str] = []
+
+        latest_iso_for_tl = None
+        for jid, d in pairs:
+            try:
+                dtp = datetime.datetime.fromisoformat((d or "").replace("Z", "+00:00"))
+                latest_iso_for_tl = dtp.isoformat()
+                day = dtp.date().isoformat()
+            except Exception:
+                day = ""
+            j = get_journal(db, jid, user_id)
+            if j and j.content:
+                content_text = j.content
+                key_phrase = goal.content.strip()
+                idx = content_text.lower().find(key_phrase.lower()) if key_phrase else -1
+                if idx != -1:
+                    start = max(0, idx - 60)
+                    end = min(len(content_text), idx + len(key_phrase) + 60)
+                    snippet = content_text[start:end].strip()
+                else:
+                    snippet = content_text.split(".")[:1][0].strip()
+                line = f"- {day}: \"{snippet}\""
+                if line not in existing_notes and line not in appended_lines:
+                    appended_lines.append(line)
+
+        tl = parse_time_limit(goal.content, latest_iso_for_tl or "")
+
+        trend_samples: List[tuple[datetime.datetime, float]] = []
+        for jid, d in pairs:
+            ja = ja_by_id.get(jid)
+            if not ja:
+                continue
+            try:
+                dtp = datetime.datetime.fromisoformat((d or "").replace("Z", "+00:00")) if d else None
+            except Exception:
+                dtp = None
+            if dtp is None:
+                dtp = ja.analysis_date or datetime.datetime.now(datetime.timezone.utc)
+            trend_samples.append((dtp, mood_score(ja)))
+        trend_samples.sort(key=lambda x: x[0])
+        emotion_trend_vals = [v for _, v in trend_samples] if trend_samples else None
+        new_notes = (existing_notes + ("\n" if existing_notes and appended_lines else "") + "\n".join(appended_lines)).strip()
+
+        payload = GoalUpdate(
+            notes=new_notes if new_notes else None,
+            related_entry_ids=combined_ids,
+            time_limit=tl if tl else None,
+            emotion_trend=emotion_trend_vals if emotion_trend_vals else None,
+            updated_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+        update_goal(db, goal.id, payload, user_id)
 
 
 def full_analysis_pipeline(

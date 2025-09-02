@@ -19,4 +19,19 @@ CONNECTED_PROMPT: str = (
     "keywordEnergyMap, journalWeights.\n\n"
 )
 
+# System prompts
+CONNECTED_SYSTEM_PROMPT: str = "Respond only with JSON."
+FEEDBACK_SYSTEM_PROMPT: str = "Return JSON with feedback, reflectiveQuestion, motivation."
+PROMPTS_SYSTEM_PROMPT: str = "Return JSON array only."
+
+# User prompt templates
+FEEDBACK_USER_TEMPLATE: str = (
+    "Write {tone_style} feedback, reflectiveQuestion and motivation as JSON based on: {connected_json}"
+)
+
+PROMPTS_USER_TEMPLATE: str = (
+    "Suggest 3 {tone_style} journaling prompts tailored to this data. Return JSON array of strings.\n"
+    "Data: {connected_json}"
+)
+
 SIMILARITY_THRESHOLD: float = 0.75  # cosine threshold for goal deduplication

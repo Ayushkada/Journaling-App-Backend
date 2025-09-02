@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 class BaseSchema(BaseModel):
     class Config:
         from_attributes = True
-        orm_mode = True
 
 class GoalBase(BaseSchema):
     id: UUID
